@@ -21,6 +21,15 @@ type pExp =
   Function to traslate betwen AST expressions
   to pExp expressions
 *)
+let rec pow_to_times (p: pExp) (l: pExp list) (cnt: int) (exp: int) : pExp =
+  let newList = p::l in
+  let cnt = cnt + 1 in
+  if (cnt < exp) then
+    pow_to_times p newList cnt exp
+  else
+    Times(newList)
+;;
+
 let rec from_expr (_e: Expr.expr) : pExp =
     match _e with
       | Num(i) -> Term(i, 0)
@@ -44,9 +53,16 @@ let rec from_expr (_e: Expr.expr) : pExp =
       | Pow(e1, i) ->
         (
         match e1 with
-          | Num(ni) -> Term(0, 0) (* Make exponent of ni *)
+          | Num(ni) ->
+            let fn = float_of_int ni in
+            let fi = float_of_int i in
+              let f = fn ** fi in
+                let i = int_of_float f in
+                  Term(i, 0)
           | Var(c) -> Term(1, i)
-          | _ -> Term(0, 0) (* Turn into Times e1 i times *)
+          | _ ->
+            let t = from_expr e1 in
+              pow_to_times t [] 0 i
         )
       | Pos(e1) ->
         let n = Term(1, 0) in
@@ -98,6 +114,7 @@ let compare (e1: pExp) (e2: pExp) : bool =
   Hint 1: Print () around elements that are not Term() 
   Hint 2: Recurse on the elements of Plus[..] or Times[..]
 *)
+(* TODO - Loop times and plus so dont have () arround every single one, low priority*)
 let rec print_pExp (_e: pExp): unit =
   match _e with
     | Term(m, n) ->
@@ -161,34 +178,39 @@ let rec simplify1 (e:pExp): pExp =
       | Plus(el) -> 
         (
           match el with
-            | hd::tl ->
+            | hd::tl::li ->
               (
                 match hd with
                   | Term(m1, n1) ->
                     (
                       match tl with
-                        | Term(m2, n2)::[] ->
+                        | Term(m2, n2) ->
                           if(n1 = n2) then
-                            Term(m1 + m2, n1)
+                            let t = Term(m1 + m2, n1) in
+                            (
+                              match li with
+                               | [] -> t
+                               | _ -> Plus(t::li)
+                            )
                           else
-                            Plus(hd::tl)
-                        | Plus(el)::[] ->
-                          let p = Plus(el) in
-                          let tl = simplify1 p in
-                          let e2 = Plus(hd::tl::[]) in
+                            Plus(hd::tl::li)
+                        | Plus(el) ->
+                          let tl = simplify1 tl in
+                          let e2 = Plus(hd::tl::li) in
                             simplify1 e2
-                        | Times(el)::[] ->
-                          let p = Times(el) in
-                          let tl = simplify1 p in
-                          let e2 = Plus(hd::tl::[]) in
+                        | Times(el) ->
+                          let tl = simplify1 tl in
+                          let e2 = Plus(hd::tl::li) in
                             simplify1 e2
-                        | [] -> hd
                     )
                   | Plus(el) -> let p = Plus(el) in simplify1 p (* handle *)
                   | Times(el) -> let p = Plus(el) in simplify1 p (* handle *)
               )
             | _ -> e
         )
+
+
+
 
       | Times(el) ->
         (
@@ -227,6 +249,7 @@ let rec simplify1 (e:pExp): pExp =
   Compute if two pExp are the same 
   Make sure this code works before you work on simplify1  
 *)
+(* TODO - test*)
 let equal_pExp (_e1: pExp) (_e2: pExp) :bool =
   if(_e1 = _e2) then
     true
