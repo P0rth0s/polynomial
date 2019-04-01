@@ -21,7 +21,6 @@ type pExp =
   Function to traslate betwen AST expressions
   to pExp expressions
 *)
-(* TODO *)
 let rec from_expr (_e: Expr.expr) : pExp =
     match _e with
       | Num(i) -> Term(i, 0)
@@ -30,13 +29,18 @@ let rec from_expr (_e: Expr.expr) : pExp =
         let t1 = from_expr e1 in
         let t2 = from_expr e2 in
           let l = t1::t2::[] in
-          Plus(l)
-      | Sub(e1, e2) -> Term(0,0)
+            Plus(l)
+      | Sub(e1, e2) ->
+        let t1 = from_expr e1 in
+        let t2 = from_expr e2 in
+        let n = Term(-1, 0) in
+          let n1 = Times(n::t2::[]) in
+            Plus(t1::n1::[])
       | Mul(e1, e2) ->
         let t1 = from_expr e1 in
         let t2 = from_expr e2 in
           let l = t1::t2::[] in
-          Times(l)
+            Times(l)
       | Pow(e1, i) ->
         (
         match e1 with
@@ -44,8 +48,14 @@ let rec from_expr (_e: Expr.expr) : pExp =
           | Var(c) -> Term(1, i)
           | _ -> Term(0, 0) (* Turn into Times e1 i times *)
         )
-      | Pos(e1) -> Term(0,0)
-      | Neg(e1) -> Term(0,0)
+      | Pos(e1) ->
+        let n = Term(1, 0) in
+        let t = from_expr e1 in
+          Times(n::t::[])
+      | Neg(e1) -> 
+        let n = Term(-1, 0) in
+        let t = from_expr e1 in
+          Times(n::t::[])
 ;;
 
 
@@ -110,7 +120,7 @@ let rec print_pExp (_e: pExp): unit =
           Printf.printf("+");
           print_pExp t;
           Printf.printf(")");
-        | [] -> Printf.printf "";
+        | _ -> Printf.printf "";
       )
     | Times(l) ->
       (
@@ -121,7 +131,7 @@ let rec print_pExp (_e: pExp): unit =
             Printf.printf("*");
             print_pExp t;
             Printf.printf(")");
-          | [] -> Printf.printf ""
+          | _ -> Printf.printf ""
       )
 ;;
 
@@ -147,15 +157,39 @@ let rec print_pExp (_e: pExp): unit =
 let rec simplify1 (e:pExp): pExp =
     match e with
       | Term(i1, i2) -> e
+
       | Plus(el) -> 
         (
           match el with
-            | hd::tl -> e
-              (*match hd with
-                | Term()
-                | Plus
-                | Times*)
+            | hd::tl ->
+              (
+                match hd with
+                  | Term(m1, n1) ->
+                    (
+                      match tl with
+                        | Term(m2, n2)::[] ->
+                          if(n1 = n2) then
+                            Term(m1 + m2, n1)
+                          else
+                            Plus(hd::tl)
+                        | Plus(el)::[] ->
+                          let p = Plus(el) in
+                          let tl = simplify1 p in
+                          let e2 = Plus(hd::tl::[]) in
+                            simplify1 e2
+                        | Times(el)::[] ->
+                          let p = Times(el) in
+                          let tl = simplify1 p in
+                          let e2 = Plus(hd::tl::[]) in
+                            simplify1 e2
+                        | [] -> hd
+                    )
+                  | Plus(el) -> let p = Plus(el) in simplify1 p (* handle *)
+                  | Times(el) -> let p = Plus(el) in simplify1 p (* handle *)
+              )
+            | _ -> e
         )
+
       | Times(el) ->
         (
         match el with
@@ -167,38 +201,23 @@ let rec simplify1 (e:pExp): pExp =
                   match tl with
                     | Term(m2, n2)::[] ->
                       Term(m1 * m2, n1 + n2)
-                    | Plus(el)::[] -> let p = Plus(el) in simplify1 p (* handle *)
+                    | Plus(el)::[] ->
+                      let p = Plus(el) in
+                      let s = simplify1 p in
+                      let e2 = Times(hd::s::[]) in
+                        simplify1 e2
                     | Times(el)::[] ->
                       let p = Times(el) in
                       let s = simplify1 p in
                       let e2 = Times(hd::s::[]) in
                         simplify1 e2
                 )
-              | Plus(el) -> let p = Plus(el) in simplify1 p
-              | Times(el) ->
+              | _ ->
                 let hd = simplify1 hd in
-                (
-                  match hd with
-                    | Term(m1, n1) ->
-                      (
-                        match tl with
-                          | Term(m2, n2)::[] ->
-                            Term(m1 * m2, n1 + n2)
-                          | Plus(el)::[] ->
-                            let p = Plus(el) in
-                            let s = simplify1 p in
-                            let e2 = Times(hd::s::[]) in
-                              simplify1 e2
-                          | Times(el)::[] ->
-                            let p = Times(el) in
-                            let s = simplify1 p in
-                            let e2 = Times(hd::s::[]) in
-                              simplify1 e2
-                      )
-                    | _ ->
-                      let 
-                )
+                let e2 = Times(hd::tl) in
+                  simplify1 e2
             )
+          | _ -> e
         )
 ;;
 
