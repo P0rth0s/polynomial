@@ -184,7 +184,7 @@ let rec simplify1 (e:pExp): pExp =
                   | Term(m1, n1) ->
                     (
                       match tl with
-                        | Term(m2, n2) ->
+                        | Term(m2, n2) -> (* Plus - Term - Term *) (* If terms are same exp add, otherwise return plus list, if no more in plus list return term, else return list *)
                           if(n1 = n2) then
                             let t = Term(m1 + m2, n1) in
                             (
@@ -193,18 +193,43 @@ let rec simplify1 (e:pExp): pExp =
                                | _ -> Plus(t::li)
                             )
                           else
-                            Plus(hd::tl::li)
-                        | Plus(el) ->
-                          let tl = simplify1 tl in
-                          let e2 = Plus(hd::tl::li) in
-                            simplify1 e2
-                        | Times(el) ->
+                            Plus(tl::li@hd::[])
+                        | Plus(el) -> (* Plus - Term - Plus *) (* Flatten *)
+                            let newList = hd::el@li in
+                              Plus(newList)
+                        | Times(el) -> (* Plus - Term - Times *) (* Simplify tail and put into plus list *)
                           let tl = simplify1 tl in
                           let e2 = Plus(hd::tl::li) in
                             simplify1 e2
                     )
-                  | Plus(el) -> let p = Plus(el) in simplify1 p (* handle *)
-                  | Times(el) -> let p = Plus(el) in simplify1 p (* handle *)
+
+                  | Plus(el) ->
+                    (
+                    match tl with
+                      | Term(m, n) -> (* Plus - Plus - Term *) (* Flatten - FIX*)
+                        let newList = el@tl::li in
+                          Plus(newList)
+                      | Plus(el2) -> (* Plus - Plus - Plus *)
+                        Plus(el@el2@li)
+                      | Times(el2) -> (* Plus - Plus - Times*) (* Simplify times*)
+                        let tl = simplify1 tl in
+                          Plus(hd::tl::li)
+                    )
+
+                  | Times(el) ->
+                    (
+                      match tl with
+                        | Term(m, n) -> (* Plus - Times - Term : (4*x)+x *)
+                          let hd = simplify1 hd in
+                            Plus(hd::tl::li)
+                        | Plus(el2) -> (* Plus - Times - Plus *)
+                          let hd = simplify1 hd in
+                            Plus(hd::el2@li)
+                        | Times(el2) -> (* Plus - Times - Times *)
+                          let hd = simplify1 hd in
+                          let tl = simplify1 tl in
+                            Plus(hd::tl::li)
+                    )
               )
             | _ -> e
         )
@@ -221,20 +246,28 @@ let rec simplify1 (e:pExp): pExp =
               | Term(m1, n1) ->
                 (
                   match tl with
-                    | Term(m2, n2)::[] ->
+                    | Term(m2, n2)::[] -> (* Times - Term - Term : 4x * 6 *)
                       Term(m1 * m2, n1 + n2)
-                    | Plus(el)::[] ->
+                    | Plus(el)::[] -> (* Times - Term - Plus : 4x * (3 + 5x) *) (* TODO - Must expand commutative *)
                       let p = Plus(el) in
                       let s = simplify1 p in
                       let e2 = Times(hd::s::[]) in
                         simplify1 e2
-                    | Times(el)::[] ->
+                    | Times(el)::[] -> (* Times - Term - Times : 4x^2 * (4 * 5x) *) (* Simplify tail and recurse, TODO - flatten *)
                       let p = Times(el) in
                       let s = simplify1 p in
                       let e2 = Times(hd::s::[]) in
                         simplify1 e2
                 )
-              | _ ->
+              | Plus(el) ->
+              let hd = simplify1 hd in
+              let e2 = Times(hd::tl) in
+                simplify1 e2
+                (*match tl with
+                  | Term(m, n)::[] -> (* Times - Plus -Term : (4+5x) * 3x *) (* TODO - Must expand commutative *)
+                  | Plus(el)::[] -> (* Times - Plus - Plus : (5 +3x)*(2+x+3x^2) *)
+                  | Times(el)::[] -> (* Times - Plus - Times : (4+x)*(4*x^2) *)*)
+              | Times(el) ->
                 let hd = simplify1 hd in
                 let e2 = Times(hd::tl) in
                   simplify1 e2
@@ -268,7 +301,7 @@ let rec simplify (e:pExp): pExp =
       print_pExp rE;
       if (equal_pExp e rE) then
         e
-      else  
+      else
         simplify(rE)
 ;;
 
