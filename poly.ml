@@ -172,6 +172,15 @@ let rec print_pExp (_e: pExp): unit =
   Hint 6: Find other situations that can arise
 *)
 
+let rec commutative (t:pExp) (p:pExp list) (l: pExp list): pExp list=
+  match p with
+  | hd::tl ->
+    let ti = Times(t::hd::[]) in
+      let l = ti::l in
+        commutative t tl l
+  | [] -> l
+  ;;
+
 (* NOTE: The labels for all names go Outer expression type - Head type - second element type*)
 let rec simplify1 (e:pExp): pExp =
     match e with
@@ -255,11 +264,10 @@ let rec simplify1 (e:pExp): pExp =
                           | [] -> t
                           | _ -> Times(t::li)
                       )
-                    | Plus(el) -> (* Times - Term - Plus : 4x * (3 + 5x) *) (* TODO - Must expand commutative *)
-                      let p = Plus(el) in
-                      let s = simplify1 p in
-                      let e2 = Times(hd::s::li) in
-                        simplify1 e2
+                    | Plus(el) -> (* Times - Term - Plus : 4x * (3 + 5x) *) (* Expand commutative *)
+                        let l = [] in
+                        let c = commutative hd el l in
+                        Plus(c)
                     | Times(el) -> (* Times - Term - Times : 4x^2 * (4 * 5x) *) (* Simplify tail and recurse, TODO - flatten *)
                       let p = Times(el) in
                       let s = simplify1 p in
@@ -267,17 +275,29 @@ let rec simplify1 (e:pExp): pExp =
                         simplify1 e2
                 )
               | Plus(el) ->
-              let hd = simplify1 hd in
-              let e2 = Times(hd::tl::li) in
-                simplify1 e2
-                (*match tl with
-                  | Term(m, n)::[] -> (* Times - Plus -Term : (4+5x) * 3x *) (* TODO - Must expand commutative *)
-                  | Plus(el)::[] -> (* Times - Plus - Plus : (5 +3x)*(2+x+3x^2) *)
-                  | Times(el)::[] -> (* Times - Plus - Times : (4+x)*(4*x^2) *)*)
+                (
+                match tl with
+                  | Term(m, n) -> (* Times - Plus -Term : (4+5x) * 3x *) (* Expand commutative *)
+                      let l = [] in
+                      let c = commutative tl el l in
+                      Plus(c)
+                  | Plus(el) -> (* Times - Plus - Plus : (5 +3x)*(2+x+3x^2) *)
+                      tl
+                  | Times(el) -> (* Times - Plus - Times : (4+x)*(4*x^2) *)
+                      tl
+                )
+
               | Times(el) ->
-                let hd = simplify1 hd in
-                let e2 = Times(hd::tl::li) in
-                  simplify1 e2
+                (
+                match tl with
+                  | Term(m, n) -> (* Times - Times - Term *) (* Flatten *)
+                      Times(el@tl::li)
+                  | Plus(el) -> (* Times - Times - Plus : (5 +3x)*(2+x+3x^2) *)
+                      let hd = simplify1 hd in
+                      Times(hd::tl::li)
+                  | Times(el2) -> (* Times - Times - Times : (4+x)*(4*x^2) *) (* Flatten *)
+                      Times(el@el2@li)
+                )
             )
           | _ -> e
         )
