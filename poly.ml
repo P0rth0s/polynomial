@@ -160,13 +160,14 @@ let rec print_pExp (_e: pExp): unit =
           print_pExp h;
           Printf.printf("+");
           print_pExp t;
-          Printf.printf(")");
           let p = Plus(li) in
             print_pExp p;
+          Printf.printf(")");
         | h::[] ->
+          Printf.printf("+");
           print_pExp h;
         | [] ->
-          Printf.printf "1";
+          Printf.printf "";
       )
     | Times(l) ->
       (
@@ -177,7 +178,7 @@ let rec print_pExp (_e: pExp): unit =
             Printf.printf("*");
             print_pExp t;
             Printf.printf(")");
-          | _ -> Printf.printf "2"
+          | _ -> Printf.printf ""
       )
 ;;
 
@@ -255,7 +256,20 @@ let rec simplify1 (e:pExp): pExp =
                                     Plus(l)
                             )
                           else (* TODO - Figure out how to go to next ones in cant add first two scenario - simplify li*)
-                            Plus(hd::tl::li)
+                            (
+                            match li with
+                              | [] -> e
+                              | hd2::tl2 ->
+                                let p = Plus(tl::hd2::tl2) in
+                                let s = simplify1 p in
+                                (
+                                match s with
+                                  | Plus(el) ->
+                                      Plus(hd::el)
+                                  | _ -> Plus(hd::s::[])
+                                )
+                            )
+                            (*Plus(hd::tl::li)*)
                             (*let l = tl::li in
                             let l = sort_by_degree l in
                               let p = Plus(l) in
