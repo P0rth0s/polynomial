@@ -13,6 +13,7 @@ type pExp =
     Plus([Term(2,1); Term(1,0)])
   *)
   | Times of pExp list (* List of terms multiplied *)
+  | Divides of pExp list
 ;;
 
 
@@ -29,6 +30,7 @@ let rec degree (_e:pExp): int =
     | Term(n, m) -> m
     | Plus(l) -> get_degree_plus l 0
     | Times(l) -> get_degree_times l 0
+    | Divides(l) -> 0
 
 and get_degree_plus (el:pExp list) (hi:int) : int = 
   match el with
@@ -69,9 +71,11 @@ let sort_by_degree (p: pExp list) : pExp list =
 (*
   Function to traslate betwen AST expressions
   to pExp expressions
+
+  TODO make Times - Times instead of flattening now
 *)
-let rec pow_to_times (p: pExp) (l: pExp list) (cnt: int) (exp: int) : pExp =
-  let newList = p::l in
+let rec pow_to_times (p: pExp) (li: pExp list) (cnt: int) (exp: int) : pExp =
+  let newList = p::li in
   let cnt = cnt + 1 in
   if (cnt < exp) then
     pow_to_times p newList cnt exp
@@ -103,6 +107,10 @@ let rec from_expr (_e: Expr.expr) : pExp =
           let l = t1::t2::[] in
           let l = sort_by_degree l in
             Times(l)
+      | Div(e1, e2) ->
+        let t1 = from_expr e1 in
+        let t2 = from_expr e2 in
+          Divides(t1::t2::[])
       | Pow(e1, i) ->
         (
         match e1 with
@@ -110,8 +118,8 @@ let rec from_expr (_e: Expr.expr) : pExp =
             let fn = float_of_int ni in
             let fi = float_of_int i in
               let f = fn ** fi in
-                let i = int_of_float f in
-                  Term(i, 0)
+                let f = int_of_float f in
+                  Term(f, 0)
           | Var(c) -> Term(1, i)
           | _ ->
             let t = from_expr e1 in
@@ -160,11 +168,15 @@ let rec print_pExp (_e: pExp): unit =
           print_pExp h;
           Printf.printf("+");
           print_pExp t;
-          let p = Plus(li) in
-            print_pExp p;
-          Printf.printf(")");
+          (
+          match li with
+            | [] -> Printf.printf(")");
+            | _ ->
+              Printf.printf("+");
+              let t = Plus(li) in
+                print_pExp t;
+          )
         | h::[] ->
-          Printf.printf("+");
           print_pExp h;
         | [] ->
           Printf.printf "";
@@ -177,8 +189,38 @@ let rec print_pExp (_e: pExp): unit =
             print_pExp h;
             Printf.printf("*");
             print_pExp t;
-            Printf.printf(")");
-          | _ -> Printf.printf ""
+            (
+            match li with
+            | [] -> Printf.printf(")");
+            | _ ->
+              Printf.printf("*");
+              let t = Plus(li) in
+                print_pExp t;
+            )
+        | h::[] ->
+          Printf.printf("*");
+          print_pExp h;
+        | [] ->
+          Printf.printf "";
+      )
+    | Divides(l) ->
+      (
+        match l with
+        | h::t::li ->
+        Printf.printf("(");
+        print_pExp h;
+        Printf.printf(")");
+        Printf.printf("/");
+        Printf.printf("(");
+        print_pExp t;
+        Printf.printf(")");
+        let p = Plus(li) in
+          print_pExp p;
+        | h::[] ->
+          Printf.printf("/");
+          print_pExp h;
+        | [] ->
+          Printf.printf "";
       )
 ;;
 
@@ -255,7 +297,7 @@ let rec simplify1 (e:pExp): pExp =
                                   let l = sort_by_degree l in
                                     Plus(l)
                             )
-                          else (* TODO - Figure out how to go to next ones in cant add first two scenario - simplify li*)
+                          else
                             (
                             match li with
                               | [] -> e
@@ -265,16 +307,10 @@ let rec simplify1 (e:pExp): pExp =
                                 (
                                 match s with
                                   | Plus(el) ->
-                                      Plus(hd::el)
+                                      Plus(hd::el) (* Flatten *)
                                   | _ -> Plus(hd::s::[])
                                 )
                             )
-                            (*Plus(hd::tl::li)*)
-                            (*let l = tl::li in
-                            let l = sort_by_degree l in
-                              let p = Plus(l) in
-                              let s = simplify1 p in
-                                Plus(hd::s::[])*)
                         | Plus(el) -> (* Plus - Term - Plus *) (* Flatten *)
                             let l = hd::el@li in
                             let l = sort_by_degree l in
@@ -283,8 +319,8 @@ let rec simplify1 (e:pExp): pExp =
                           let tl = simplify1 tl in
                           let l = hd::tl::li in
                           let l = sort_by_degree l in
-                          let e2 = Plus(l) in
-                            simplify1 e2
+                            Plus(l)
+                        | Divides(el) -> e (* Plus - Term - Divide *) (* TODO *)
                     )
 
                   | Plus(el) ->
@@ -303,6 +339,7 @@ let rec simplify1 (e:pExp): pExp =
                         let l = el@tl::li in
                         let l = sort_by_degree l in
                           Plus(l)
+                      | Divides(el) -> e (* Plus - Plus - Divide *) (* TODO *)
                     )
 
                   | Times(el) ->
@@ -324,7 +361,10 @@ let rec simplify1 (e:pExp): pExp =
                           let l = hd::tl::li in
                           let l = sort_by_degree l in
                             Plus(l)
+                        | Divides(el) -> e (* Plus - Times - Divide *) (* TODO *)
                     )
+
+                  | Divides(el) -> e (* Times - Times - Divide *) (* TODO *)
               )
             | _ -> e
         )
@@ -352,9 +392,15 @@ let rec simplify1 (e:pExp): pExp =
                         let l = [] in
                         let c = distributive_term hd el l in
                         let c = sort_by_degree c in
-                        Plus(c)
+                          let p = Plus(c) in
+                          (
+                            match li with
+                            | [] -> p
+                            | _ -> Times(p::li)
+                          )
                     | Times(el) -> (* Times - Term - Times *) (* Flatten *)
                         Times(hd::el@li)
+                    | Divides(el) -> e (* Times - Term - Divide *) (* TODO *)
                 )
               | Plus(el) ->
                 (
@@ -363,15 +409,26 @@ let rec simplify1 (e:pExp): pExp =
                       let l = [] in
                       let c = distributive_term tl el l in
                       let c = sort_by_degree c in
-                      Plus(c)
+                        let p = Plus(c) in
+                        (
+                          match li with
+                          | [] -> p
+                          | _ -> Times(p::li)
+                        )
                   | Plus(el2) -> (* Times - Plus - Plus *) (* Expand distibutive_plus *)
                       let l = [] in
                       let l = distributive_plus el el2 l in
                       let l = sort_by_degree l in
-                      Plus(l)
+                        let p = Plus(l) in
+                        (
+                          match li with
+                          | [] -> p
+                          | _ -> Times(p::li)
+                        )
                   | Times(el) -> (* Times - Plus - Times *) (* Simplify Times *)
                       let tl = simplify1 tl in
                         Times(hd::tl::li)
+                  | Divides(el) -> e (* Times - Plus - Divide *) (* TODO *)
                 )
 
               | Times(el) ->
@@ -384,10 +441,16 @@ let rec simplify1 (e:pExp): pExp =
                       Times(hd::tl::li)
                   | Times(el2) -> (* Times - Times - Times *) (* Flatten *)
                       Times(el@el2@li)
+                  | Divides(el) -> e (* Times - Times - Divide *) (* TODO *)
                 )
+              | Divides(el) -> e (* Times - Times - Divide *) (* TODO *)
             )
           | _ -> e
         )
+
+
+
+      | Divides(el) -> e
 ;;
 
 
@@ -410,6 +473,8 @@ let equal_pExp (_e1: pExp) (_e2: pExp) :bool =
   progress is made
 *)    
 let rec simplify (e:pExp): pExp =
+    print_pExp e;
+    Printf.printf("\n");
     let rE = simplify1(e) in
       print_pExp rE;
       Printf.printf("\n");
@@ -418,7 +483,3 @@ let rec simplify (e:pExp): pExp =
       else
         simplify(rE)
 ;;
-
-
-
-
